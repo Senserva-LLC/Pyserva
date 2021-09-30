@@ -27,7 +27,8 @@ bokeh.io.output_notebook(INLINE)
 
 # Functions that will be used in this notebook
 def read_config_values(file_path):
-    # This loads pre-generated parameters for Sentinel Workspace
+    '''This loads pre-generated parameters for Sentinel Workspace. This should be provided to your workspace via a config.json file'''
+
     with open(file_path) as json_file:
         if json_file:
             json_config = json.load(json_file)
@@ -41,7 +42,8 @@ def read_config_values(file_path):
     return None
 
 def has_valid_token():
-    # Check to see if there is a valid AAD token
+    '''Check to see if there is a valid AAD token, otherwise throw exception'''
+
     try:
         credentials, sub_id = get_azure_cli_credentials()
         creds = credentials._get_cred(resource=None)
@@ -61,7 +63,8 @@ def has_valid_token():
         return False
 
 def process_result(result):
-    # This function processes data returned from Azure LogAnalyticsDataClient, it returns pandas DataFrame
+    '''This function processes data returned from Azure LogAnalyticsDataClient, it returns pandas DataFrame'''
+
     json_result = result.as_dict()
     cols = pd.json_normalize(json_result['tables'][0], 'columns')
     final_result = pd.json_normalize(json_result['tables'][0], 'rows')
@@ -71,11 +74,18 @@ def process_result(result):
     return final_result
     
 def SenservaPermissionQuery(tableName):
-    # Query for finding relationships from the Senserva Scanner results
-    where_clause = "{0} | where TimeGenerated > ago(12h)| where (ControlName_s == 'ServicePrincipalPermissionGrantTenant' or ControlName_s == 'ApplicationPermissionGrantTenant' or ControlName_s == 'ServicePrincipalMembership' or ControlName_s == 'UserMembers' or ControlName_s =='UserOwners' or ControlName_s =='GroupMembers') | extend values =tostring(parse_json(Value_s)) | extend JSON = todynamic(values) | order by TimeGenerated desc"
+    '''Query for finding relationships from the Senserva Scanner results. 
+    If you have set up multiple workspaces, provide a Sentinel alias to query both functions'''
+
+    where_clause = "{0} | where TimeGenerated > ago(7d)| where (ControlName_s == 'ServicePrincipalPermissionGrantTenant' or ControlName_s == 'ApplicationPermissionGrantTenant' or ControlName_s == 'ServicePrincipalMembership' or ControlName_s == 'UserMembers' or ControlName_s =='UserOwners' or ControlName_s =='GroupMembers') | extend values =tostring(parse_json(Value_s)) | extend JSON = todynamic(values) | order by TimeGenerated desc"
     return where_clause.format(tableName)
 
 def PluckDataFromQueryResults(query_result, names_list, csvFileWriter):
+    '''Given Senserva query results, pick out the data we want. 
+    The data will be written as tuples to a given CSV file writer object. 
+    The format of each line of the file will be [Source,Target,relationship,weight].
+    All unique objects will be colelcted and returned as a dropdown menu, to allow for user selected filtering'''
+
     # Set up some values
     name_user = 'User'
     name_disabled_user = 'DisabledUser'
@@ -88,6 +98,7 @@ def PluckDataFromQueryResults(query_result, names_list, csvFileWriter):
     weight_disabled_user = '8'
     weight_group = '4'
     weight_role = '5'
+    weight_application = '6'
     weight_all_users = '3'
     weight_unknown = '10'
 
@@ -97,7 +108,8 @@ def PluckDataFromQueryResults(query_result, names_list, csvFileWriter):
     permissionRelationship = 'Permission to Use'
 
     # Loop through our results and process the relationships
-    for index,value in query_result.JSON.items():
+    try:
+        for index,value in query_result.JSON.items():
             JSONItems = json.loads(value)
             targetName = "Unknown"
             userList = []
@@ -113,128 +125,107 @@ def PluckDataFromQueryResults(query_result, names_list, csvFileWriter):
             indirectUnknownList = []
             edges = []
             for x in JSONItems:
-                # Find our target that we are working with
-                if(x['Tag'] == "ApplicationName" or x['Tag'] =="ServicePrincipalName" or x['Tag'] =="UserName"):
-                    targetName = x['Val']
-                    names_list.append(targetName)
-                
-                
-                # We have a Service Principal that has been granted consent for the tenant by a tenant admin
-                if(x['Tag'] == "ServicePrincipalTenantPermissionGrantList"):
-                    edges.append([targetName,name_all_users,weight_all_users, permissionRelationship])
+                if 'Tag' in x:
+                    # Find our target that we are working with
+                    if(x['Tag'] == "ApplicationName" or x['Tag'] =="ServicePrincipalName" or x['Tag'] =="UserName"):
+                        targetName = x['Val']
+                        names_list.append(targetName)
+                    
+                    
+                    # We have a Service Principal that has been granted consent for the tenant by a tenant admin
+                    if(x['Tag'] == "ServicePrincipalTenantPermissionGrantList"):
+                        edges.append([targetName,name_all_users,weight_application,weight_all_users, permissionRelationship,MapRisk(query_result.Risk_d[index])])
 
-                # We have a Service Principal that has been granted consent for a particular user
-                if(x['Tag'] == "ServicePrincipalUserPermissionGrantList"):
-                    for nameValuePair in x['Val']:
-                        userList.append(nameValuePair['Item1'])
-                        edges.append([targetName,nameValuePair['Item1'],weight_user, permissionRelationship])
-                
-                # We have a Service Principal that has been granted consent for a particular disabled user
-                if(x['Tag'] == "ServicePrincipalDisabledUserPermissionGrantList"):
-                    for nameValuePair in x['Val']:
-                        disabledUserList.append(nameValuePair['Item1'])
-                        edges.append([targetName,nameValuePair['Item1'],weight_disabled_user, permissionRelationship])
+                    # We have a Service Principal that has been granted consent for a particular user
+                    if(x['Tag'] == "ServicePrincipalUserPermissionGrantList"):
+                        for nameValuePair in x['Val']:
+                            userList, unknownObjectList, edges = ParseQueryResultHelper(nameValuePair, userList, unknownObjectList, edges, 'Item1', 'Item2', targetName, weight_application, weight_user, weight_unknown, permissionRelationship, query_result.Risk_d[index])
+                    
+                    # We have a Service Principal that has been granted consent for a particular disabled user
+                    if(x['Tag'] == "ServicePrincipalDisabledUserPermissionGrantList"):
+                        for nameValuePair in x['Val']:
+                            disabledUserList, unknownObjectList, edges = ParseQueryResultHelper(nameValuePair, disabledUserList, directUnknownList, edges, 'Item1', 'Item2', targetName, weight_application, weight_disabled_user, weight_unknown, permissionRelationship, query_result.Risk_d[index])
 
-                # We have a Service Principal that has been granted consent for an AAD Object that is not recognized
-                if(x['Tag'] == "ServicePrincipalUnknownObjectPermissionGrantList"):
-                    for nameValuePair in x['Val']:
-                        unknownObjectList.append(nameValuePair['Item1'])
-                        edges.append([targetName,nameValuePair['Item1'],weight_unknown, permissionRelationship])
+                    # We have a Service Principal that has been granted consent for an AAD Object that is not recognized
+                    if(x['Tag'] == "ServicePrincipalUnknownObjectPermissionGrantList"):
+                        for nameValuePair in x['Val']:
+                            unknownObjectList, unknownObjectList, edges = ParseQueryResultHelper(nameValuePair, unknownObjectList, unknownObjectList, edges, 'Item1', 'Item2', targetName, weight_application, weight_unknown, weight_unknown, permissionRelationship, query_result.Risk_d[index])
 
-                # We have a Service Principal that is directly assigned as a member of an AAD Group
-                if(x['Tag'] == "ServicePrincipalDirectGroupMember"):
-                    for nameValuePair in x['Val']:
-                        directGroupList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_group, memberRelationship])
+                    # We have a Service Principal that is directly assigned as a member of an AAD Group
+                    if(x['Tag'] == "ServicePrincipalDirectGroupMember"):
+                        for nameValuePair in x['Val']:
+                            directGroupList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directGroupList, directUnknownList, edges, 'Name', 'Id', targetName, weight_application, weight_group, weight_unknown, memberRelationship, query_result.Risk_d[index])
 
-                # We have a Service Principal that is directly assigned an AAD role membership
-                if(x['Tag'] == "ServicePrincipalDirectRoleMember"):
-                    for nameValuePair in x['Val']:
-                        directRoleList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_role, memberRelationship])
+                    # We have a Service Principal that is directly assigned an AAD role membership
+                    if(x['Tag'] == "ServicePrincipalDirectRoleMember"):
+                        for nameValuePair in x['Val']:
+                            directRoleList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directRoleList, directUnknownList, edges, 'Name', 'Id', targetName, weight_application, weight_role, weight_unknown, memberRelationship, query_result.Risk_d[index])
 
-                # We have a Service Principal that is directly assigned membership to an unknown AAD object
-                if(x['Tag'] == "ServicePrincipalDirectUnknownMember"):
-                    for nameValuePair in x['Val']:
-                        directUnknownList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_unknown, memberRelationship])
+                    # We have a Service Principal that is directly assigned membership to an unknown AAD object
+                    if(x['Tag'] == "ServicePrincipalDirectUnknownMember"):
+                        for nameValuePair in x['Val']:
+                            directUnknownList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directUnknownList, directUnknownList, edges, 'Name', 'Id', targetName, weight_application, weight_unknown, weight_unknown, memberRelationship, query_result.Risk_d[index])
 
-                # We have a Service Principal that has indirect membership to a group e.g. SP is member of Group A, Group A is a member of Group B
-                if(x['Tag'] == "ServicePrincipalIndirectGroupMember"):
-                    for nameValuePair in x['Val']:
-                        indirectGroupList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_group, indirectMemberRelationship])
+                    # We have a Service Principal that has indirect membership to a group e.g. SP is member of Group A, Group A is a member of Group B
+                    if(x['Tag'] == "ServicePrincipalIndirectGroupMember"):
+                        for nameValuePair in x['Val']:
+                            indirectGroupList, indirectUnknownList, edges = ParseQueryResultHelper(nameValuePair, indirectGroupList, indirectUnknownList, edges, 'Name', 'Id', targetName, weight_application, weight_group, weight_unknown, indirectMemberRelationship, query_result.Risk_d[index])
 
-                # We have a Service Principal that has indirect role membership e.g. SP is member of Group A, Group A is assigned Role B
-                if(x['Tag'] == "ServicePrincipalIndirectRoleMember"):
-                    for nameValuePair in x['Val']:
-                        indirectRoleList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_role, indirectMemberRelationship])
+                    # We have a Service Principal that has indirect role membership e.g. SP is member of Group A, Group A is assigned Role B
+                    if(x['Tag'] == "ServicePrincipalIndirectRoleMember"):
+                        for nameValuePair in x['Val']:
+                            indirectRoleList, indirectUnknownList, edges = ParseQueryResultHelper(nameValuePair, indirectRoleList, indirectUnknownList, edges, 'Name', 'Id', targetName, weight_application, weight_role, weight_unknown, indirectMemberRelationship, query_result.Risk_d[index])
 
-                # We have a Service Principal that has indirect membership to an unknown AAD object
-                if(x['Tag'] == "ServicePrincipalIndirectUnknownMember"):
-                    for nameValuePair in x['Val']:
-                        indirectUnknownList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_unknown, indirectMemberRelationship])
+                    # We have a Service Principal that has indirect membership to an unknown AAD object
+                    if(x['Tag'] == "ServicePrincipalIndirectUnknownMember"):
+                        for nameValuePair in x['Val']:
+                            indirectUnknownList, indirectUnknownList, edges = ParseQueryResultHelper(nameValuePair, indirectUnknownList, indirectUnknownList, edges, 'Name', 'Id', targetName, weight_application, weight_unknown, weight_unknown, indirectMemberRelationship, query_result.Risk_d[index])
 
-                # We have a user that is a member of an AAD Group
-                if(x['Tag'] == "GroupMemberUser"):
-                    userList.append(targetName)
-                    for nameValuePair in x['Val']:
-                        directGroupList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_group, memberRelationship])
+                    # We have a user that is a member of an AAD Group
+                    if(x['Tag'] == "GroupMemberUser"):
+                        userList.append(targetName)
+                        for nameValuePair in x['Val']:
+                            directGroupList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directGroupList, directUnknownList, edges, 'Name', 'Id', targetName, weight_user, weight_group, weight_unknown, memberRelationship, query_result.Risk_d[index])
 
-                # We have a user that is a assigned a role membership
-                if(x['Tag'] == "RoleMemberUser"):
-                    userList.append(targetName)
-                    for nameValuePair in x['Val']:
-                        directRoleList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_role, memberRelationship])
+                    # We have a user that is a assigned a role membership
+                    if(x['Tag'] == "RoleMemberUser"):
+                        userList.append(targetName)
+                        for nameValuePair in x['Val']:
+                            directRoleList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directRoleList, directUnknownList, edges, 'Name', 'Id', targetName, weight_user, weight_role, weight_unknown, memberRelationship, query_result.Risk_d[index])
 
-                # We have a group that is a assigned a group membership
-                if(x['Tag'] == "GroupMemberGroup"):
-                    directGroupList.append(targetName)
-                    for nameValuePair in x['Val']:
-                        directGroupList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_group, memberRelationship])
+                    # We have a group that is a assigned a group membership
+                    if(x['Tag'] == "GroupMemberGroup"):
+                        directGroupList.append(targetName)
+                        for nameValuePair in x['Val']:
+                            directGroupList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directGroupList, directUnknownList, edges, 'Name', 'Id', targetName, weight_group, weight_group, weight_unknown, memberRelationship, query_result.Risk_d[index])
 
-                # We have a group that is a assigned a role membership
-                if(x['Tag'] == "GroupMemberRole"):
-                    directGroupList.append(targetName)
-                    for nameValuePair in x['Val']:
-                        directRoleList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_role, memberRelationship])
+                    # We have a group that is a assigned a role membership
+                    if(x['Tag'] == "GroupMemberRole"):
+                        directGroupList.append(targetName)
+                        for nameValuePair in x['Val']:
+                            directRoleList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directRoleList, directUnknownList, edges, 'Name', 'Id', targetName, weight_group, weight_role, weight_unknown, memberRelationship, query_result.Risk_d[index])
 
-                # We have a user that is a assigned a group ownership
-                if(x['Tag'] == "GroupOwners"):
-                    userList.append(targetName)
-                    for nameValuePair in x['Val']:
-                        directGroupList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_user, ownerRelationship])
+                    # We have a user that is a assigned a group ownership
+                    if(x['Tag'] == "GroupOwners"):
+                        userList.append(targetName)
+                        for nameValuePair in x['Val']:
+                            directGroupList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directGroupList, directUnknownList, edges, 'Name', 'Id', targetName, weight_group, weight_user, weight_unknown, ownerRelationship, query_result.Risk_d[index])
 
-                # We have a user that is a assigned an application ownership
-                if(x['Tag'] == "ApplicationOwner"):
-                    userList.append(targetName)
-                    for nameValuePair in x['Val']:
-                        if('Name' in nameValuePair.keys()):
-                            directApplicationList.append(nameValuePair['Name'])
-                            edges.append([targetName,nameValuePair['Name'],weight_user, ownerRelationship])
-                        elif('Id' in nameValuePair.keys()):
-                            directApplicationList.append(nameValuePair['Id'])
-                            edges.append([targetName,nameValuePair['Id'],weight_user, ownerRelationship])
-                        else:
-                            print('None')
-                            directUnknownList.append(nameValuePair)
-                            edges.append([targetName,nameValuePair,weight_unknown, ownerRelationship])
+                    # We have a user that is a assigned an application ownership
+                    if(x['Tag'] == "ApplicationOwner"):
+                        userList.append(targetName)
+                        for nameValuePair in x['Val']:
+                            directApplicationList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directApplicationList, directUnknownList, edges, 'Name', 'Id', targetName, weight_application, weight_user, weight_unknown, ownerRelationship, query_result.Risk_d[index])
 
-                # We have a user that is a assigned a service principal ownership
-                if(x['Tag'] == "ServicePrincipalOwner"):
-                    userList.append(targetName)
-                    for nameValuePair in x['Val']:
-                        directServicePrincipalList.append(nameValuePair['Name'])
-                        edges.append([targetName,nameValuePair['Name'],weight_user, ownerRelationship])
+                    # We have a user that is a assigned a service principal ownership
+                    if(x['Tag'] == "ServicePrincipalOwner"):
+                        userList.append(targetName)
+                        for nameValuePair in x['Val']:
+                            directServicePrincipalList, directUnknownList, edges = ParseQueryResultHelper(nameValuePair, directServicePrincipalList, directUnknownList, edges, 'Name', 'Id', targetName, weight_application, weight_user, weight_unknown, ownerRelationship, query_result.Risk_d[index])
 
-            for user in userList:
+                else:
+                    continue
+            for user in userList:   
                 names_list.append(user)
             for disabledUser in disabledUserList:
                 names_list.append(disabledUser)
@@ -260,43 +251,106 @@ def PluckDataFromQueryResults(query_result, names_list, csvFileWriter):
             # Write our edges to the file for later use
             for edge in edges:
                 csvFileWriter.writerow(edge)
-                    
-    # Take our list of objects and make a dropdown list to use for filtering
-    names = sorted(set(names_list))
-    name_dropdown = ipywidgets.Dropdown(options=names, description='Objects:')
-    display(name_dropdown)
+                
+                
+        # Take our list of objects and make a dropdown list to use for filtering
+        names = sorted(set(names_list))
+        name_dropdown = ipywidgets.Dropdown(options=names, description='Objects:')
+        display(name_dropdown)
 
-    return name_dropdown
+        return name_dropdown
+
+    except AttributeError:
+        print('No data found from the query')
+
+    return
+
+def ParseQueryResultHelper(nameValuePair, foundList, defaultList, edgesList, primaryKey, backupKey, sourceName, weightSource, weightFound, weightNotFound, relationship, risk):
+    '''Helper to parse through query results'''
+
+    if(primaryKey in nameValuePair.keys()):
+        foundList.append(nameValuePair[primaryKey])
+        edgesList.append([sourceName,nameValuePair[primaryKey],weightSource,weightFound, relationship, MapRisk(risk)])
+    elif(backupKey in nameValuePair.keys()):
+        foundList.append(nameValuePair[backupKey])
+        edgesList.append([sourceName,nameValuePair[backupKey],weightSource,weightFound, relationship, MapRisk(risk)])
+    else:
+        defaultList.append(nameValuePair)
+        edgesList.append([sourceName,nameValuePair,weightSource,weightNotFound, relationship, MapRisk(risk)])
+    
+    return (foundList, defaultList, edgesList)
+
+def MapRisk(risk):
+    '''Map the Risk Value to a Name'''
+
+    result = ''
+    if(risk == 0):
+        result = 'None'
+    elif(risk == 1):
+        result = 'Very Low'
+    elif(risk == 5):
+        result = 'Low'
+    elif(risk == 10):
+        result = 'Medium'
+    elif(risk == 20):
+        result = 'High'
+    elif(risk == 30):
+        result = 'Very High'
+    elif(risk == 50):
+        result = 'Critical'
+    else:
+        result = 'Unknown'
+
+    return result
 
 def RenderGraphData(file_df):
+    '''Given a Pandas data frame from a CSV file, parse the data out, process it for rendering with a Networkx Graph.
+    Each line in Data frame is expected to be in form [Source,Target,SourceWeight,TargetWeight,Relationship,Risk]'''
+
     # Set up the Graph 
     G = nx.Graph
+    keys = {}
+    values = {}
     modularity_class = {}
     modularity_color = {}
     relationship = {}
+    risk = {}
 
     # Process the passed in data frame and make nodes/edges data for graph
     # Use a data frame because networkx expects a data frame
     G = nx.from_pandas_edgelist(file_df, 'Source','Target', True)
     for index, row in file_df.iterrows():
-        modularity_class[row['Source']] = 2
-        modularity_color[row['Source']] = Spectral11[2]#Set3_12[2]
-        modularity_class[row['Target']] = row['weight']
-        modularity_color[row['Target']] = Spectral11[row['weight']]#Set3_12[row['weight']]
-        relationship[row['Target']] = row['relationship']
+        # SSame node might appear multiple times, find and use only highest value
+        if(row['Source'] in keys):
+            keys[row['Source']] = max(int(row['SourceWeight']), int(keys[row['Source']]))
+        else:
+            keys[row['Source']] = int(row['SourceWeight'])
+
+        if(row['Target'] in keys):
+            keys[row['Target']] = max(int(row['TargetWeight']), int(keys[row['Target']]))
+        else:
+            keys[row['Target']] = int(row['TargetWeight'])
+
+        modularity_class[row['Source']] = keys[row['Source']]
+        modularity_color[row['Source']] = Spectral11[keys[row['Target']]]
+        modularity_class[row['Target']] = keys[row['Source']]
+        modularity_color[row['Target']] = Spectral11[keys[row['Target']]]
+        relationship[row['Target']] = row['Relationship']
+        risk[row['Target']] = row['Risk']
 
     degrees = dict(nx.degree(G))
-    nx.set_node_attributes(G, name='degree', values=degrees)
+    nx.set_node_attributes(G, degrees, 'degree')
 
     # Set the node size after we have processed the data
     number_to_adjust_by = 10
     adjusted_node_size = dict([(node, degree+number_to_adjust_by) for node, degree in nx.degree(G)])
-    nx.set_node_attributes(G, name='adjusted_node_size', values=adjusted_node_size)
+    nx.set_node_attributes(G, adjusted_node_size, 'adjusted_node_size')
 
     # Add modularity class, color, and relationship as attributes from the network above
     nx.set_node_attributes(G, modularity_class, 'modularity_class')
     nx.set_node_attributes(G, modularity_color, 'modularity_color')
     nx.set_node_attributes(G, relationship, 'relationship')
+    nx.set_node_attributes(G, risk, 'risk')
 
 
     #Choose attributes from G network to size and color by — setting manual size (e.g. 10) or color (e.g. 'skyblue') also allowed
@@ -309,8 +363,8 @@ def RenderGraphData(file_df):
     #Establish which categories will appear when hovering over each node
     HOVER_TOOLTIPS = [
         ("Source", "@index"),
-        ("Degree", "@degree"),
-        ("Relationship", "@relationship"),
+        ("Number of Connections", "@degree"),
+        ("Risk", "@risk"),
     ]
 
     #Create a plot — set dimensions, toolbar, and title
@@ -335,22 +389,24 @@ def RenderGraphData(file_df):
     return
 
 def htmlTableParser(list):
-    # Given a list of edge data, parse out the items and format for use in HTML Tabulator Table display
+    '''Given a list of edge data, parse out the items and format for use in HTML Tabulator Table display'''
+
     str = ''
 
     for item in list:
-        str += '{Source:"' + item["Source"] + '", Target:"' + item["Target"] + '", relationship:"' + item["relationship"] + '", weight:"' + f"{item['weight']}" + '"},'
+        str += '{Source:"' + item["Source"] + '", Target:"' + item["Target"] + '", relationship:"' + item["Relationship"] + '", risk:"' + item["Risk"] + '", weight:"' + f"{item['TargetWeight']}" + '"},'
     
     return str
 
 def htmlTreeParser(list):
-    # Given a list of edge data, parse out the items and format for use in HTML Tabulator Tree display
+    '''Given a list of edge data, parse out the items and format for use in HTML Tabulator Tree display'''
+
     str = ''
     dict = {}
 
     # Load the dictionary with all the values
     for item in list:
-        dict.setdefault(item["Source"], []).append((item["Target"], item["relationship"], item["weight"]))
+        dict.setdefault(item["Source"], []).append((item["Target"], item["Relationship"], item["Risk"], item["TargetWeight"]))
     
     # Once all values found, trim the dictionary to unique values
     for key,value in dict.items():
@@ -360,13 +416,14 @@ def htmlTreeParser(list):
     for key, value in dict.items():
         childrenString = ''
         for item in value:
-            childrenString += '{Source:"' + item[0] + '", relationship:"' + item[1] + '", weight:"' + (f"{item[2]}") + '"},'
+            childrenString += '{Source:"' + item[0] + '", relationship:"' + item[1] + '", risk:"' + item[2] + '", weight:"' + (f"{item[3]}") + '"},'
         str += '{Source:"' + key + '", _children:[' + childrenString + ']},'
 
     return str
 
-def filterHelper(name_dropdown, file_df):
-    # Based on given edge data CSV file and ipywidgets.Dropdown selection, filter the edge data
+def filterHelper(name_dropdown, file_df, defaultFilter):
+    '''Based on given edge data CSV file and ipywidgets.Dropdown selection, filter the edge data'''
+
     if(name_dropdown.value != defaultFilter):
         file_df_filtered = file_df[(file_df.Target == name_dropdown.value)]
         file_df_filtered = file_df_filtered.append(file_df[(file_df.Source == name_dropdown.value)])
@@ -374,10 +431,11 @@ def filterHelper(name_dropdown, file_df):
     else:
         return file_df
 
-def filterDataFrameAndCreateList(name_dropdown, file_df):
-    # Create a filtered list from given edge data CSV file and ipywidgets.Dropdown selection
+def filterDataFrameAndCreateList(name_dropdown, file_df, defaultFilter):
+    '''Create a filtered list from given edge data CSV file and ipywidgets.Dropdown selection'''
+
     items = []
-    file_df_filtered = filterHelper(name_dropdown, file_df)
+    file_df_filtered = filterHelper(name_dropdown, file_df, defaultFilter)
     for index, row in file_df_filtered.iterrows():
         items.append(row)
     return items
