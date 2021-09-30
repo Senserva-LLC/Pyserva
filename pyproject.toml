@@ -5,6 +5,7 @@ requires = [
     "pandas",
     "ipywidgets",
     "networkx",
-    "bokeh"
+    "bokeh",
+    "azure-cli"
 ]
 build-backend = "setuptools.build_meta"

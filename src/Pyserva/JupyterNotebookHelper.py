@@ -72,15 +72,10 @@ def process_result(result):
     
 def SenservaPermissionQuery(tableName):
     # Query for finding relationships from the Senserva Scanner results
-    where_clause = "{0} | where TimeGenerated > ago(7d)| where (ControlName_s == 'ServicePrincipalPermissionGrantTenant' or ControlName_s == 'ApplicationPermissionGrantTenant' or ControlName_s == 'ServicePrincipalMembership' or ControlName_s == 'UserMembers' or ControlName_s =='UserOwners' or ControlName_s =='GroupMembers') | extend values =tostring(parse_json(Value_s)) | extend JSON = todynamic(values) | order by TimeGenerated desc"
+    where_clause = "{0} | where TimeGenerated > ago(12h)| where (ControlName_s == 'ServicePrincipalPermissionGrantTenant' or ControlName_s == 'ApplicationPermissionGrantTenant' or ControlName_s == 'ServicePrincipalMembership' or ControlName_s == 'UserMembers' or ControlName_s =='UserOwners' or ControlName_s =='GroupMembers') | extend values =tostring(parse_json(Value_s)) | extend JSON = todynamic(values) | order by TimeGenerated desc"
     return where_clause.format(tableName)
 
-def SenservaLocationQuery(tableName):
-    # Query for finding Location data
-    where_clause = "{0} | where ControlName_s == 'Locations' | extend values =tostring(parse_json(Value_s)) | extend JSON = todynamic(values) | extend Hash = tostring(JSON[4].Value) | extend Location = tostring(geo_geohash_to_polygon(Hash)) | where Location != ''  | order by TimeGenerated desc"
-    return where_clause.format(tableName)
-
-def PluckDataFromQueryResults(query_result, names_list):
+def PluckDataFromQueryResults(query_result, names_list, csvFileWriter):
     # Set up some values
     name_user = 'User'
     name_disabled_user = 'DisabledUser'
@@ -264,7 +259,7 @@ def PluckDataFromQueryResults(query_result, names_list):
 
             # Write our edges to the file for later use
             for edge in edges:
-                filewriter.writerow(edge)
+                csvFileWriter.writerow(edge)
                     
     # Take our list of objects and make a dropdown list to use for filtering
     names = sorted(set(names_list))
