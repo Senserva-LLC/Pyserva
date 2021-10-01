@@ -1,5 +1,5 @@
 
-# Pyserva
+# PyServa
 
 The Senserva Python Library is provided to help analyze and visualize data. The JupyterNotebookHelper module will assist users who are utilizing Jupyter Notebooks for their needs. 
 
