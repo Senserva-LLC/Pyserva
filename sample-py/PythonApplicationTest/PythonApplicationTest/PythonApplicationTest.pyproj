@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>17f61459-affe-4051-9f96-f8212a1cff2d</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>PythonApplicationTest.py</StartupFile>
+    <StartupFile>test_jupyterNoteBookHelper.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
