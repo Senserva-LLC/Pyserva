@@ -539,6 +539,7 @@ def htmlTreeParser(list):
     return str
 
 def isNaN(string):
+    '''Check whether a given vlaue is NaN'''
     return string != string
 
 def filterHelper(name_dropdown, file_df, defaultFilter):
@@ -562,6 +563,8 @@ def filterDataFrameAndCreateList(name_dropdown, file_df, defaultFilter):
 
 
 def RiskComparer(current, new):
+    '''Compares current risk to new risk, returns the higher'''
+
     highest = 'Unknown'
     if(MapRiskToValue(current) > MapRiskToValue(new)):
         highest = current
@@ -571,11 +574,13 @@ def RiskComparer(current, new):
     return highest
 
 def MapRiskToValue(risk):
+    '''Mapper for Risk to a numeric value'''
     dict = {'Unknown': -1, 'None': 0, 'VeryLow': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'VeryHigh': 5, 'Critical': 6}
 
     return dict[risk] if risk in dict else -1
 
 class LongShort():
+    '''LongShort class, used for objects to have a shorter display value and a longer more informative value, for toggling'''
   def __init__(self, long, short):
     self.long = long
     self.short = short

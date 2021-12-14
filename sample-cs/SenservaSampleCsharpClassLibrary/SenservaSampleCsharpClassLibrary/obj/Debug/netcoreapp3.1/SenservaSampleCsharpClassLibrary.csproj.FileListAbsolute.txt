@@ -1,9 +1,0 @@
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\bin\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.deps.json
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\bin\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.dll
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\bin\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.pdb
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\obj\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\obj\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.AssemblyInfoInputs.cache
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\obj\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.AssemblyInfo.cs
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\obj\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.csproj.CoreCompileInputs.cache
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\obj\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.dll
-C:\Users\Administrator\source\repos\Senserva-LLC\Pyserva\sample-cs\SenservaSampleCsharpClassLibrary\SenservaSampleCsharpClassLibrary\obj\Debug\netcoreapp3.1\SenservaSampleCsharpClassLibrary.pdb

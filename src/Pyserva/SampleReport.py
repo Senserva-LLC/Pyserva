@@ -3,7 +3,7 @@ from azure.loganalytics.models import QueryBody
 from azure.mgmt.loganalytics import LogAnalyticsManagementClient
 from azure.loganalytics import LogAnalyticsDataClient
 
-# # Processing Helpers
+# Processing Helpers
 import StandaloneApiHelper as SenservaApi
 
 from IPython.display import display, HTML, Markdown

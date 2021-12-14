@@ -41,6 +41,8 @@ headers = None
 
 # Functions
 def authenticate(tenant: str, id: str, secret: str):
+    '''Authenticate against the Graph API, return a token'''
+
     global token
     global headers
     authority = "https://login.microsoftonline.com/{0}".format(tenant)
@@ -57,42 +59,56 @@ def authenticate(tenant: str, id: str, secret: str):
     return
 
 def users():
+    '''Fetch Users data from the Graph API'''
     return query(graphApiVersion, "users?")
 
 def usersMemberships():
+    '''Fetch User Memberships data from the Graph API'''
     return query(graphApiVersion, "users?$expand=memberOf")
 
 def usersManagers():
+    '''Fetch User Manager data from the Graph API'''
     return query(graphApiVersion, "users?$expand=manager")
 
 def groups():
+    '''Fetch Groups data from the Graph API'''
     return query(graphApiVersion, "groups")
 
 def groupsMemberships():
+    '''Fetch Group Memberships data from the Graph API'''
     return query(graphApiVersion, "groups?$expand=members")
 
 def groupsOwners():
+    '''Fetch Group Owners data from the Graph API'''
     return query(graphApiVersion, "groups?$expand=owners")
 
 def roles():
+    '''Fetch Roles data from the Graph API'''
     return query(graphApiVersion, "directoryRoles")
 
 def rolesMembers():
+    '''Fetch Role Members data from the Graph API'''
     return query(graphApiVersion, "directoryRoles?$expand=members")
 
 def applications():
+    '''Fetch Applications data from the Graph API'''
     return query(graphApiVersion, "applications")
 
 def applicationsOwners():
+    '''Fetch Application Owners data from the Graph API'''
     return query(graphApiVersion, "applications?$expand=owners")
 
 def servicePrincipals():
+    '''Fetch Servicfe Principals data from the Graph API'''
     return query(graphApiVersion, "servicePrincipals")
 
 def servicePrincipalsOwners():
+    '''Fetch Service Pricnipal Owners data from the Graph API'''
     return query(graphApiVersion, "servicePrincipals?$expand=owners")
 
 def query(v, r):
+    '''Fetch data from the Graph API, given an endpoint'''
+
     dest = uri.format(v=v, r=r)
     result = requests.get(dest, headers=headers).json()
 
@@ -105,6 +121,8 @@ def query(v, r):
     return result
 
 def getNextLinkQuery(result):
+    '''Fetch the next page of data from the Graph API'''
+
     if "@odata.nextLink" in result:
         newResult = requests.get(result["@odata.nextLink"], headers=headers).json()
         return newResult
@@ -113,7 +131,8 @@ def getNextLinkQuery(result):
 # *********************
 
 def PluckDataFromQueryResults(userMemberDict, userManagerDict, groupOwnerDict, groupMemberDict, roleMemberDict, appOwnerDict, spDict, filewriter): 
-    
+    '''Process data from Permission Query'''
+
     filewriter.writerow(['Source', 'SourceId', 'SourceType', 'Target', 'TargetId', 'TargetType', 'SourceWeight', 'TargetWeight', 'Relationship', 'Reason', 'Risk', 'UserMail', 'UserManagerMail'])
 
     # Set up some values
@@ -389,7 +408,8 @@ def PluckDataFromQueryResults(userMemberDict, userManagerDict, groupOwnerDict, g
     return
 
 def filterHelper(name_dropdown, file_df, defaultFilter):
-    # Based on given edge data file and dropdown selection, filter the edge data
+    '''Based on given edge data file and dropdown selection, filter the edge data'''
+
     if(name_dropdown.value != defaultFilter):
         file_df_filtered = file_df[(file_df.Target == name_dropdown.value)]
         file_df_filtered = file_df_filtered.append(file_df[(file_df.Source == name_dropdown.value)])
@@ -399,11 +419,12 @@ def filterHelper(name_dropdown, file_df, defaultFilter):
    
 
 def processingHelper(item: str):
+    '''Status dialog to command line'''
     print("Processing " + item + "...")
 
 def RenderGraphData(file_df):
     '''Given a Pandas data frame from a CSV file, parse the data out, process it for rendering with a Networkx Graph.
-    Each line in Data frame is expected to be in form [Source,Target,SourceWeight,TargetWeight,Relationship,Risk]'''
+    Each line in Data frame is expected to be in form ['Source', 'SourceId', 'SourceType', 'Target', 'TargetId', 'TargetType', 'SourceWeight', 'TargetWeight', 'Relationship', 'Reason', 'Risk', 'UserMail', 'UserManagerMail']'''
 
     # Set up the Graph 
     G = nx.Graph
@@ -504,63 +525,6 @@ def RenderGraphData(file_df):
     plot.renderers.append(network_graph)
 
     return plot
-
-def filterDataFrame(name_dropdown, file_df):
-    items = []
-    #file_df_filtered = filterHelper(name_dropdown, file_df)
-    for index, row in file_df.iterrows():
-        items.append(row)
-    return items
-
-
-# Functions that will be used in this notebook
-def read_config_values(file_path):
-    '''This loads pre-generated parameters for Sentinel Workspace. This should be provided to your workspace via a config.json file'''
-
-    with open(file_path) as json_file:
-        if json_file:
-            json_config = json.load(json_file)
-            return (json_config["tenant_id"],
-                    json_config["subscription_id"],
-                    json_config["resource_group"],
-                    json_config["workspace_id"],
-                    json_config["workspace_name"],
-                    json_config["user_alias"],
-                    json_config["user_object_id"])
-    return None
-
-def has_valid_token():
-    '''Check to see if there is a valid AAD token, otherwise throw exception'''
-
-    try:
-        credentials, sub_id = get_azure_cli_credentials()
-        creds = credentials._get_cred(resource=None)
-        # token = creds._token_retriever()[2]
-        token = creds.get_token()[1]
-        print("Successfully signed in.")
-        return True
-    except Exception as ex:
-        if "Please run 'az login' to setup account" in str(ex):
-            print(str(ex))
-            return False
-        elif "AADSTS70043: The refresh token has expired" in str(ex):
-            message = "**The refresh token has expired. <br> Please continue your login process. Then: <br> 1. If you plan to run multiple notebooks on the same compute instance today, you may restart the compute instance by clicking 'Compute' on left menu, then select the instance, clicking 'Restart'; <br> 2. Otherwise, you may just restart the kernel from top menu. <br> Finally, close and re-load the notebook, then re-run cells one by one from the top.**"
-            display(Markdown(message))
-            return False
-    except:
-        print("Please restart the kernel, and run 'az login'.")
-        return False
-
-def process_result(result):
-    '''This function processes data returned from Azure LogAnalyticsDataClient, it returns pandas DataFrame'''
-
-    json_result = result.as_dict()
-    cols = pd.json_normalize(json_result['tables'][0], 'columns')
-    final_result = pd.json_normalize(json_result['tables'][0], 'rows')
-    if final_result.shape[0] != 0:
-        final_result.columns = cols.name
-
-    return final_result
     
 def SenservaPermissionQuery(tableName):
     '''Query for finding relationships from the Senserva Scanner results. 
@@ -570,47 +534,23 @@ def SenservaPermissionQuery(tableName):
     return where_clause.format(tableName)
 
 def ParseQueryResultHelper(nameValuePair, foundList, defaultList, edgesList, primaryKey, backupKey, sourceName, weightSource, weightFound, weightNotFound, relationship, risk, userMail,userManagerMail):
-    '''Helper to parse through query results TODO: Add Reason'''
+    '''Helper to parse through query results'''
 
     if(primaryKey in nameValuePair.keys()):
         foundList.append(nameValuePair[primaryKey])
-        edgesList.append([sourceName,nameValuePair[primaryKey],weightSource,weightFound, relationship, "TBD", MapRisk(risk),userMail,userManagerMail])
+        edgesList.append([sourceName,nameValuePair[primaryKey],weightSource,weightFound, relationship, "TBD", risk,userMail,userManagerMail])
     elif(backupKey in nameValuePair.keys()):
         foundList.append(nameValuePair[backupKey])
-        edgesList.append([sourceName,nameValuePair[backupKey],weightSource,weightFound, relationship,"TBD", MapRisk(risk),userMail,userManagerMail])
+        edgesList.append([sourceName,nameValuePair[backupKey],weightSource,weightFound, relationship,"TBD", risk,userMail,userManagerMail])
     else:
         defaultList.append(nameValuePair)
-        edgesList.append([sourceName,nameValuePair,weightSource,weightNotFound, relationship,"TBD", MapRisk(risk),userMail,userManagerMail])
+        edgesList.append([sourceName,nameValuePair,weightSource,weightNotFound, relationship,"TBD", risk, userMail,userManagerMail])
     
     return (foundList, defaultList, edgesList)
 
-def MapRisk(risk):
-    '''Map the Risk Value to a Name'''
-
-    return risk
-
-def htmlTableParser(list):
-    '''Given a list of edge data, parse out the items and format for use in HTML Tabulator Table display'''
-
-    str = ''
-    dict = {}
-
-    # Load the dictionary with all the values
-    for item in list:
-        dict.setdefault(item["Source"], []).append((item["Target"], item["relationship"], item["weight"]))
-
-    # Once all values found, trim the dictionary to unique values
-    for key,value in dict.items():
-        dict[key] = set(value)
-    
-    # Format all dictionary values for display with HTML Tabulator table structure
-    for key, value in dict.items():
-        for item in value:
-            str += '{Source:"' + key + '", ' + 'Target:"' + item[0] + '", relationship:"' + item[1] + '", weight:"' + f"{item[2]}" + '"},'
-
-    return str
-
 def RiskComparer(current, new):
+    '''Compares current risk to new risk, returns the higher'''
+
     highest = 'Unknown'
     if(MapRiskToValue(current) > MapRiskToValue(new)):
         highest = current
@@ -620,6 +560,7 @@ def RiskComparer(current, new):
     return highest
 
 def MapRiskToValue(risk):
+    '''Mapper for Risk to a numeric value'''
     dict = {'Unknown': -1, 'None': 0, 'VeryLow': 1, 'Low': 3, 'Medium': 5, 'High': 7, 'VeryHigh': 9, 'Critical': 11}
 
     return dict[risk] if risk in dict else -1
@@ -631,16 +572,7 @@ def filterDataFrameAndCreateList(name_dropdown, file_df, defaultFilter):
     #file_df_filtered = filterHelper(name_dropdown, file_df, defaultFilter)
     for index, row in file_df.iterrows():
         items.append(row)
-    return items
-
-def demoData(file_df):
-    items = []
-    for index, row in file_df.iterrows():
-        temp = row.to_dict()
-        items.append(temp.get('Source'))
-        items.append(temp.get('Target'))
-    return items
-    
+    return items    
 
 def htmlTreeParser(list):
     '''Given a list of edge data, parse out the items and format for use in HTML Tabulator Tree display'''
@@ -689,10 +621,14 @@ def htmlTreeParser(list):
     return str
 
 def isNaN(string):
+    '''Check if a value is NaN'''
+
     return string != string
 
 
 def getTreeTemplate():
+    '''Template for HTML tree view'''
+
     treeTemplate = '''<link href="https://unpkg.com/tabulator-tables@5.0.6/dist/css/tabulator.min.css" rel="stylesheet">
 <script type="text/javascript" src="https://unpkg.com/tabulator-tables@5.0.6/dist/js/tabulator.min.js"></script>
 <link href='https://unpkg.com/tabulator-tables@5.0.6//dist/css/tabulator_midnight.min.css' rel='stylesheet'>
@@ -1015,6 +951,7 @@ var table = new Tabulator('#senserva-table', {{
     return treeTemplate
 
 def getReportTemplate():
+    '''Template for HTML report'''
     reportTemplate = '''<!DOCTYPE html>
 <html>
 <head>
@@ -1049,6 +986,7 @@ as Permissions, PIM Roles, Conditional Access Usage, and more!</td>
 
 
 class LongShort():
+    '''LongShort class, used for objects to have a shorter display value and a longer more informative value, for toggling'''
   def __init__(self, long, short):
     self.long = long
     self.short = short
