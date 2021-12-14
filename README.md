@@ -1,5 +1,5 @@
 
-# Pyserva
+![Pyserva](/docs/Pyserva_logo.png)
 
 The Senserva Python Library is provided to help analyze and visualize data. The JupyterNotebookHelper module will assist users who are utilizing Jupyter Notebooks for their needs. The StandAloneApiHelper will be useful for those who want a pure Python experience. Our team has also made a sample report for Azure Connections, using the StandAloneApiHelper, which will automate the acquisition of data and building the report.
 
