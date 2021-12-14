@@ -5,6 +5,7 @@ requires = [
     "pandas",
     "ipywidgets",
     "networkx",
-    "bokeh"
+    "bokeh",
+    "jsonpickle",
 ]
 build-backend = "setuptools.build_meta"
