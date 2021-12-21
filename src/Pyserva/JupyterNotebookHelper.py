@@ -15,14 +15,15 @@ import networkx as nx
 import csv
 import requests
 import jsonpickle
+import numpy as np
 
 #Bokeh Visualization Helpers
-import bokeh
 import bokeh.io
 from bokeh.io import output_notebook, show, save
-from bokeh.models import Range1d, Circle, ColumnDataSource, MultiLine
+from bokeh.models import Range1d, MultiLine, renderers, Scatter
 from bokeh.plotting import figure, from_networkx
-from bokeh.palettes import Spectral11, RdYlGn11
+from bokeh.palettes import RdYlGn11
+from bokeh.transform import linear_cmap
 from bokeh.resources import INLINE
 bokeh.io.output_notebook(INLINE)
 
@@ -133,7 +134,7 @@ def PluckDataFromQueryResults(query_result, names_list, csvFileWriter):
         csvFileWriter.writerow(['Source', 'SourceId', 'SourceType', 'Target', 'TargetId', 'TargetType', 'SourceWeight', 'TargetWeight', 'Relationship', 'Reason', 'Risk', 'UserMail', 'UserManagerMail'])
 
         for index,value in query_result.JSON.items():
-            JSONItems = json.loads(value)
+            JSONItems = json.loads(json.dumps(value)) # This is to handle for if json object comes back with properties wrapped in single quotes
             targetName = "Unknown"
             userList = []
             disabledUserList = []
@@ -356,6 +357,12 @@ def MapRisk(risk):
 
     return result
 
+def glyph_map_helper(item:str):
+    '''Mapper for glyphs to type in Graph Renderer'''
+    dict = {'User': "circle", 'Group': "diamond", 'Application': "triangle", 'Service Principal': "star", 'Disabled User': "plus", 'PIM Role': "hex", 'Role': "square", 'Default': "circle_x"}
+
+    return dict[item] if item in dict else dict["Default"]
+
 def RenderGraphData(file_df):
     '''Given a Pandas data frame from a CSV file, parse the data out, process it for rendering with a Networkx Graph.
     Each line in Data frame is expected to be in form [Source,Target,SourceWeight,TargetWeight,Relationship,Risk]'''
@@ -366,6 +373,7 @@ def RenderGraphData(file_df):
     values = {}
     modularity_class = {}
     modularity_color = {}
+    modularity_glyph = {}
     relationship = {}
     risk = {}
     target_id = {}
@@ -390,9 +398,11 @@ def RenderGraphData(file_df):
         modularity_color[row['Source']] = RdYlGn11[keys[row['Target']]]
         modularity_class[row['Target']] = keys[row['Source']]
         modularity_color[row['Target']] = RdYlGn11[keys[row['Target']]]
+        modularity_glyph[row['Source']] = glyph_map_helper(row['SourceType'])
+        modularity_glyph[row['Target']] = glyph_map_helper(row['TargetType'])
         relationship[row['Target']] = row['Relationship']
         target_id[row['Source']] = row['SourceId']
-        #target_id[row['Target']] = row['TargetId']
+        target_id[row['Target']] = row['TargetId']
         target_type[row['Source']] = row['SourceType']
         target_type[row['Target']] = row['TargetType']
 
@@ -421,12 +431,14 @@ def RenderGraphData(file_df):
     nx.set_node_attributes(G, risk, 'risk')
     nx.set_node_attributes(G, target_id, 'target_id')
     nx.set_node_attributes(G, target_type, 'target_type')
+    nx.set_node_attributes(G, modularity_glyph, 'marker_type')
 
 
 
-    #Choose attributes from G network to size and color by â€” setting manual size (e.g. 10) or color (e.g. 'skyblue') also allowed
+    #Choose attributes from G network to size and color by — setting manual size (e.g. 10) or color (e.g. 'skyblue') also allowed
     size_by_this_attribute = 'adjusted_node_size'
     color_by_this_attribute = 'modularity_color'
+    marker_by_this_attribute = 'marker_type'
 
     #Choose a title!
     title = 'Needle in the Haystack'
@@ -440,7 +452,7 @@ def RenderGraphData(file_df):
         ("Risk", "@risk"),
     ]
 
-    #Create a plot â€” set dimensions, toolbar, and title
+    #Create a plot — set dimensions, toolbar, and title
     plot = figure(tooltips = HOVER_TOOLTIPS,
                 tools="pan,wheel_zoom,save,reset, tap", active_scroll='wheel_zoom',
                 x_range=Range1d(-10.1, 10.1), y_range=Range1d(-10.1, 10.1), title=title)
@@ -450,15 +462,97 @@ def RenderGraphData(file_df):
     network_graph = from_networkx(G, nx.spring_layout, scale=10, center=(0, 0))
 
     #Set node sizes and colors according to node degree (color as category from attribute)
-    network_graph.node_renderer.glyph = Circle(size=size_by_this_attribute, fill_color=color_by_this_attribute)
-
+    network_graph.node_renderer.glyph = Scatter(size=size_by_this_attribute, fill_color=color_by_this_attribute, marker=marker_by_this_attribute)
+    
     # Set edge opacity and width
     network_graph.edge_renderer.glyph = MultiLine(line_alpha=0.5, line_width=1)
 
     # Render the graph
     plot.renderers.append(network_graph)
-
+    
     return plot
+
+
+
+def SenservaLocationsQuery(tableName):
+    '''Query for finding locations from the Senserva Scanner results. 
+    If you have set up multiple workspaces, provide a Sentinel alias to query both functions'''
+
+    where_clause = "{0} | where TimeGenerated > ago(7d)| where ControlName_s == 'Locations'| order by TimeGenerated desc| extend values = tostring(parse_json(Value_s)) | extend JSON = todynamic(values)"
+    return where_clause.format(tableName)
+
+
+def PluckDataFromLocationQueryResults(query_result): #, names_list, csvFileWriter):
+    '''TODO: Fill in the docstring'''
+
+    geoList = []
+    ids = []
+    names = []
+    risks = []
+    permanentRoles = []
+    pimRoles = []
+    signInStatus = []
+    deviceInformation = []
+
+    try:
+        for index,value in query_result.JSON.items():
+            JSONItems = json.loads(value)
+            current_geopoint = ""
+            current_id = ""
+            current_name = ""
+            current_perm_role = ""
+            current_pim_role = ""
+            current_sign_in_status = ""
+            current_device_info = ""
+
+            for x in JSONItems:
+                if 'Tag' in x:
+                    if(x['Tag'] == "UserName"):
+                        current_name = x['Val']
+
+                    if(x['Tag'] == "UserId"):
+                        current_id = x['Val']
+                    
+                    if(x['Tag'] == "Role"):
+                        current_perm_role = x['Val']
+
+                    if(x['Tag'] == "PimRole"):
+                        current_pim_role = x['Val']
+                    
+                    if(x['Tag'] == "SignInStatus"):
+                        current_sign_in_status = x['Val']
+
+                    if(x['Tag'] == "UserDeviceDetail"):
+                        current_device_info = x['Val']
+                        
+                    if(x['Tag'] == "LocationCoordinatesHash"):
+                        current_geopoint = pygeohash.decode_exactly(x['Val'])
+            
+            geoList.append(current_geopoint)
+            ids.append(current_id)
+            names.append(current_name)
+            risks.append(query_result.Risk_s[index])
+            permanentRoles.append(current_perm_role)
+            pimRoles.append(current_pim_role)
+            signInStatus.append(current_sign_in_status)
+            deviceInformation.append(current_device_info)
+                
+
+                    
+
+    except AttributeError:
+        print('No data found from the query')   
+        
+            
+    return (geoList,ids,names,risks,permanentRoles,pimRoles,signInStatus,deviceInformation)
+
+def convertDataFrameToList(file_df):
+    '''Create a filtered list from given edge data CSV file and ipywidgets.Dropdown selection'''
+
+    items = []
+    for index, row in file_df.iterrows():
+        items.append(row)
+    return items
 
 def htmlTableParser(list):
     '''Given a list of edge data, parse out the items and format for use in HTML Tabulator Table display'''
@@ -580,7 +674,7 @@ def MapRiskToValue(risk):
     return dict[risk] if risk in dict else -1
 
 class LongShort():
-    '''LongShort class, used for objects to have a shorter display value and a longer more informative value, for toggling'''
-  def __init__(self, long, short):
-    self.long = long
-    self.short = short
+    def __init__(self, long, short):
+        '''LongShort class, used for objects to have a shorter display value and a longer more informative value, for toggling'''
+        self.long = long
+        self.short = short

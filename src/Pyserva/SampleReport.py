@@ -18,6 +18,7 @@ defaultFilter = '(no filter applied)'
 filename = 'edge_data_api.csv'
 dropdown = [defaultFilter]
 
+import io
 import json
 import csv
 import sys

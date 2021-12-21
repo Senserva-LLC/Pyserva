@@ -422,9 +422,15 @@ def processingHelper(item: str):
     '''Status dialog to command line'''
     print("Processing " + item + "...")
 
+def glyph_map_helper(item:str):
+    '''Mapper for glyphs to type in Graph Renderer'''
+    dict = {'User': "circle", 'Group': "diamond", 'Application': "triangle", 'Service Principal': "star", 'Disabled User': "plus", 'PIM Role': "hex", 'Role': "square", 'Default': "circle_x"}
+
+    return dict[item] if item in dict else dict["Default"]
+
 def RenderGraphData(file_df):
     '''Given a Pandas data frame from a CSV file, parse the data out, process it for rendering with a Networkx Graph.
-    Each line in Data frame is expected to be in form ['Source', 'SourceId', 'SourceType', 'Target', 'TargetId', 'TargetType', 'SourceWeight', 'TargetWeight', 'Relationship', 'Reason', 'Risk', 'UserMail', 'UserManagerMail']'''
+    Each line in Data frame is expected to be in form [Source,Target,SourceWeight,TargetWeight,Relationship,Risk]'''
 
     # Set up the Graph 
     G = nx.Graph
@@ -432,6 +438,7 @@ def RenderGraphData(file_df):
     values = {}
     modularity_class = {}
     modularity_color = {}
+    modularity_glyph = {}
     relationship = {}
     risk = {}
     target_id = {}
@@ -456,6 +463,8 @@ def RenderGraphData(file_df):
         modularity_color[row['Source']] = RdYlGn11[keys[row['Target']]]
         modularity_class[row['Target']] = keys[row['Source']]
         modularity_color[row['Target']] = RdYlGn11[keys[row['Target']]]
+        modularity_glyph[row['Source']] = glyph_map_helper(row['SourceType'])
+        modularity_glyph[row['Target']] = glyph_map_helper(row['TargetType'])
         relationship[row['Target']] = row['Relationship']
         target_id[row['Source']] = row['SourceId']
         target_id[row['Target']] = row['TargetId']
@@ -487,12 +496,14 @@ def RenderGraphData(file_df):
     nx.set_node_attributes(G, risk, 'risk')
     nx.set_node_attributes(G, target_id, 'target_id')
     nx.set_node_attributes(G, target_type, 'target_type')
+    nx.set_node_attributes(G, modularity_glyph, 'marker_type')
 
 
 
     #Choose attributes from G network to size and color by — setting manual size (e.g. 10) or color (e.g. 'skyblue') also allowed
     size_by_this_attribute = 'adjusted_node_size'
     color_by_this_attribute = 'modularity_color'
+    marker_by_this_attribute = 'marker_type'
 
     #Choose a title!
     title = 'Needle in the Haystack'
@@ -516,14 +527,14 @@ def RenderGraphData(file_df):
     network_graph = from_networkx(G, nx.spring_layout, scale=10, center=(0, 0))
 
     #Set node sizes and colors according to node degree (color as category from attribute)
-    network_graph.node_renderer.glyph = Circle(size=size_by_this_attribute, fill_color=color_by_this_attribute)
-
+    network_graph.node_renderer.glyph = Scatter(size=size_by_this_attribute, fill_color=color_by_this_attribute, marker=marker_by_this_attribute)
+    
     # Set edge opacity and width
     network_graph.edge_renderer.glyph = MultiLine(line_alpha=0.5, line_width=1)
 
     # Render the graph
     plot.renderers.append(network_graph)
-
+    
     return plot
     
 def SenservaPermissionQuery(tableName):
@@ -977,6 +988,7 @@ as Permissions, PIM Roles, Conditional Access Usage, and more!</td>
 <br/>
 
 <p>Here is a visual network graph of the connections that exist.</p>
+<p>Legend<br/> &#9675; - User<br/> &#9674; - Group<br/> &#9651; - Application<br/> &#9734; - Service Principal<br/> &#10133; - Disabled User<br/> &#9633; - Role<br/> &#11041; - PIM Role<br/> &#10683; - Default</p>
 <div style="display: flex; justify-content: center;">{graph_input}</div>
 
 </body>
@@ -986,7 +998,7 @@ as Permissions, PIM Roles, Conditional Access Usage, and more!</td>
 
 
 class LongShort():
-    '''LongShort class, used for objects to have a shorter display value and a longer more informative value, for toggling'''
-  def __init__(self, long, short):
-    self.long = long
-    self.short = short
+    def __init__(self, long, short):
+        '''LongShort class, used for objects to have a shorter display value and a longer more informative value, for toggling'''
+        self.long = long
+        self.short = short
