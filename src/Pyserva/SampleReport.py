@@ -39,7 +39,7 @@ from urllib.request import urlopen
 
 def main():
 
-    print('''Senserva Python Graph via API  Copyright (C) 2021  Senserva LLC
+    print('''Senserva Python Graph via API  Copyright (C) 2022  Senserva LLC
     This program comes with ABSOLUTELY NO WARRANTY; 
     This is free software, and is provided AS IS; ''')
 
@@ -154,9 +154,6 @@ def main():
         tableHtml = SenservaApi.getTreeTemplate().format(inputData = inputData)
         
         print("Rendering complete!")
-        
-        #TODO: Read remote from github
-        senserva_logo = mpimg.imread('SSL-Logo+Workmark--Vertical--Color.png')
  
         html = SenservaApi.getReportTemplate().format(table_input=tableHtml, graph_input=graphHtml)
 
